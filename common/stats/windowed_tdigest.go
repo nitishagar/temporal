@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/caio/go-tdigest/v5"
+	"go.temporal.io/server/common/fastrand"
 )
 
 type (
@@ -143,7 +144,7 @@ func (w *timeWindowedTDigest) TrimmedMean(lowerQuantile, upperQuantile float64) 
 // TODO: this is expensive, maybe cache everything but the latest window so we can skip N merges?
 func (w *timeWindowedTDigest) getMergedWindows() *tdigest.TDigest {
 	windows := w.cloneWindows()
-	merged, _ := tdigest.New()
+	merged, _ := tdigest.New(tdigest.RandomNumberGenerator(fastrand.Rand{}))
 	for idx := range windows {
 		if windows[idx].tdigest != nil {
 			_ = merged.Merge(windows[idx].tdigest)
@@ -171,11 +172,12 @@ func (w *timeWindowedTDigest) cloneWindows() []timedWindow {
 // getOrCreateWindow returns the window containing the given timestamp, creating a new one if necessary.
 // 0 is a valid timestamp and will return the most recent window.
 func (w *timeWindowedTDigest) getOrCreateWindow(timestamp time.Time) (*timedWindow, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
 	if timestamp.IsZero() {
 		timestamp = time.Now()
 	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	candidate, err := w.searchWindowsBackwards(timestamp)
 	if err == nil {
 		return candidate, nil
@@ -194,16 +196,16 @@ var errInGap = errors.New("time was in a gap between windows")
 // Precondition: w.mu is held.
 // Returns the window containing the given timestamp, or error if no window exists.
 func (w *timeWindowedTDigest) searchWindowsBackwards(timestamp time.Time) (*timedWindow, error) {
-	latest := w.windows[w.head]
+	latest := &w.windows[w.head]
 	if !timestamp.Before(latest.start) {
 		// If the requested timestamp is after the latest window, no point in searching
 		if !timestamp.Before(latest.end) {
 			return nil, errTooNew
 		}
-		return &latest, nil
+		return latest, nil
 	}
 	for idx := w.modDec(w.head); idx != w.head; idx = w.modDec(idx) {
-		candidate := w.windows[idx]
+		candidate := &w.windows[idx]
 		// Window start is inclusive, end is exclusive. We're iterating
 		// backwards in time, so the first window that matches is the one we want.
 		if !timestamp.Before(candidate.start) {
@@ -212,7 +214,7 @@ func (w *timeWindowedTDigest) searchWindowsBackwards(timestamp time.Time) (*time
 			if !timestamp.Before(w.windows[idx].end) {
 				return nil, errInGap
 			}
-			return &candidate, nil
+			return candidate, nil
 		}
 	}
 	// All the windows are newer than the requested timestamp.
@@ -249,7 +251,8 @@ func (w *timeWindowedTDigest) advanceWindowSimple(start time.Time) *timedWindow 
 		curr.end = start.Add(w.cfg.WindowSize)
 		return curr
 	}
-	digest, _ := tdigest.New()
+
+	digest, _ := tdigest.New(tdigest.RandomNumberGenerator(fastrand.Rand{}))
 	window := timedWindow{
 		tdigest: digest,
 		start:   start,
