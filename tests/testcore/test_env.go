@@ -31,6 +31,7 @@ import (
 	"go.temporal.io/server/common/testing/testhooks"
 	"go.temporal.io/server/common/testing/testlogger"
 	"go.temporal.io/server/common/testing/testvars"
+	"go.temporal.io/server/temporal"
 )
 
 // shardSalt is used to distribute functional tests across shards.
@@ -172,7 +173,26 @@ func WithPersistenceFaultInjection(cfg *config.FaultInjection) TestOption {
 func WithArchival() TestOption {
 	return func(o *testOptions) {
 		o.dedicatedCluster = true
-		o.clusterOptions = append(o.clusterOptions, WithArchivalEnabled())
+		o.clusterOptions = append(o.clusterOptions, WithServerConfigOverride(func(cfg *config.Config) {
+			filestoreArchiver := &config.FilestoreArchiver{
+				FileMode: "0666",
+				DirMode:  "0766",
+			}
+			cfg.Archival.History = config.HistoryArchival{
+				State:      config.ArchivalEnabled,
+				EnableRead: true,
+				Provider: &config.HistoryArchiverProvider{
+					Filestore: filestoreArchiver,
+				},
+			}
+			cfg.Archival.Visibility = config.VisibilityArchival{
+				State:      config.ArchivalEnabled,
+				EnableRead: true,
+				Provider: &config.VisibilityArchiverProvider{
+					Filestore: filestoreArchiver,
+				},
+			}
+		}))
 		o.dedicatedReason = "archival enabled"
 	}
 }
@@ -183,10 +203,10 @@ func WithArchival() TestOption {
 func WithCustomArchivers(historyFactory provider.CustomHistoryArchiverFactory, visibilityFactory provider.CustomVisibilityArchiverFactory) TestOption {
 	return func(o *testOptions) {
 		o.dedicatedCluster = true
-		o.clusterOptions = append(o.clusterOptions,
-			WithCustomHistoryArchiverFactory(historyFactory),
-			WithCustomVisibilityArchiverFactory(visibilityFactory),
-		)
+		o.clusterOptions = append(o.clusterOptions, WithServerOptions(
+			temporal.WithCustomHistoryArchiverFactory(historyFactory),
+			temporal.WithCustomVisibilityArchiverFactory(visibilityFactory),
+		))
 		o.dedicatedReason = "custom archivers used"
 	}
 }

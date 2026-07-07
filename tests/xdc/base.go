@@ -143,6 +143,8 @@ func (s *xdcBaseSuite) setupSuite(opts ...testcore.TestClusterOption) {
 				// RPCAddress and HTTPAddress will be filled in
 			},
 		}
+		clusterConfigs[clusterIndex].ServerConfigOverride = params.ServerConfigOverride
+		clusterConfigs[clusterIndex].ServerOptions = params.ServerOptions
 		clusterConfigs[clusterIndex].EnableMetricsCapture = true
 		clusterConfigs[clusterIndex].EnableHistoryTaskRecorder = params.EnableHistoryTaskRecorder
 
