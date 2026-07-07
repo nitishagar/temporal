@@ -15,6 +15,7 @@ import (
 	"go.temporal.io/server/common/aggregate"
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/log"
+	"go.temporal.io/server/common/stats"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -37,7 +38,7 @@ type (
 	// HealthSignalAggregator interface for aggregating health signals
 	HealthSignalAggregator interface {
 		Record(latency time.Duration, err error)
-		AverageLatency() float64
+		LatencyQuantile(quantile float64) float64
 		ErrorRatio() float64
 	}
 
@@ -47,8 +48,8 @@ type (
 
 		aggregatorEnabled dynamicconfig.BoolPropertyFn
 
-		latencyAverage aggregate.MovingWindowAverage
-		errorRatio     aggregate.MovingWindowAverage
+		latencyDistribution stats.TimeWindowedStats
+		errorRatio          aggregate.MovingWindowAverage
 
 		logger log.Logger
 	}
@@ -167,14 +168,22 @@ func NewHealthSignalAggregator(
 	aggregatorEnabled dynamicconfig.BoolPropertyFn,
 	windowSize time.Duration,
 	maxBufferSize int,
-) *healthSignalAggregatorImpl {
-	ret := &healthSignalAggregatorImpl{
-		logger:            logger,
-		aggregatorEnabled: aggregatorEnabled,
-		latencyAverage:    aggregate.NewMovingWindowAvgImpl(windowSize, maxBufferSize),
-		errorRatio:        aggregate.NewMovingWindowAvgImpl(windowSize, maxBufferSize),
+	latencyWindowCount int,
+) (*healthSignalAggregatorImpl, error) {
+	latencyDistribution, err := stats.NewWindowedTDigest(stats.WindowConfig{
+		WindowSize:  windowSize,
+		WindowCount: 10,
+	})
+	if err != nil {
+		return nil, err
 	}
-	return ret
+
+	return &healthSignalAggregatorImpl{
+		logger:              logger,
+		aggregatorEnabled:   aggregatorEnabled,
+		latencyDistribution: latencyDistribution,
+		errorRatio:          aggregate.NewMovingWindowAvgImpl(windowSize, maxBufferSize),
+	}, nil
 }
 
 func (s *healthSignalAggregatorImpl) Record(latency time.Duration, err error) {
@@ -182,7 +191,7 @@ func (s *healthSignalAggregatorImpl) Record(latency time.Duration, err error) {
 		s.logger.Debug("health signal aggregator is disabled")
 		return
 	}
-	s.latencyAverage.Record(latency.Milliseconds())
+	s.latencyDistribution.RecordToLatestWindow(float64(latency.Milliseconds()))
 
 	if isUnhealthyError(err) {
 		s.errorRatio.Record(1)
@@ -191,17 +200,19 @@ func (s *healthSignalAggregatorImpl) Record(latency time.Duration, err error) {
 	}
 }
 
-func (s *healthSignalAggregatorImpl) AverageLatency() float64 {
+func (s *healthSignalAggregatorImpl) LatencyQuantile(quantile float64) float64 {
 	if !s.aggregatorEnabled() {
 		s.logger.Debug("health signal aggregator is disabled")
 	}
-	return s.latencyAverage.Average()
+
+	return s.latencyDistribution.Quantile(quantile)
 }
 
 func (s *healthSignalAggregatorImpl) ErrorRatio() float64 {
 	if !s.aggregatorEnabled() {
 		s.logger.Debug("health signal aggregator is disabled")
 	}
+
 	return s.errorRatio.Average()
 }
 

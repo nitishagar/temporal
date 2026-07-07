@@ -265,6 +265,11 @@ response to a StartWorkflowExecution request and skipping the trip through match
 		5000,
 		`PersistenceHealthSignalBufferSize is the maximum number of persistence signals to buffer in memory per signal key`,
 	)
+	PersistenceHealthSignalLatencyWindowCount = NewGlobalIntSetting(
+		"system.persistenceHealthSignalLatencyWindowCount",
+		10,
+		`PersistenceHealthSignalLatencyWindowCount is the number of signal windows to compute latencies over`,
+	)
 	OperatorRPSRatio = NewGlobalFloatSetting(
 		"system.operatorRPSRatio",
 		0.2,

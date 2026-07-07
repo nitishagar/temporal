@@ -54,7 +54,7 @@ func (h *deepHealthCheckHandler) DeepHealthCheck(
 	})
 
 	checks = append(checks, errorIfOverThreshold(healthcheck.CheckTypeRPCLatency,
-		h.historyHealthSignal.AverageLatency(), h.config.HealthRPCLatencyFailure(),
+		h.historyHealthSignal.LatencyQuantile(0.99), h.config.HealthRPCLatencyFailure(),
 		"historyservice latency"))
 
 	checks = append(checks, errorIfOverThreshold(healthcheck.CheckTypeRPCErrorRatio,

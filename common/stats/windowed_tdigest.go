@@ -134,14 +134,18 @@ func (w *timeWindowedTDigest) SubWindowForTime(instant time.Time) TimeWindowView
 }
 
 func (w *timeWindowedTDigest) Quantile(q float64) float64 {
-	return w.getMergedWindows().Quantile(q)
+	merged := w.getMergedWindows()
+	if merged.Count() == 0 {
+		return 0
+	}
+
+	return merged.Quantile(q)
 }
 
 func (w *timeWindowedTDigest) TrimmedMean(lowerQuantile, upperQuantile float64) float64 {
 	return w.getMergedWindows().TrimmedMean(lowerQuantile, upperQuantile)
 }
 
-// TODO: this is expensive, maybe cache everything but the latest window so we can skip N merges?
 func (w *timeWindowedTDigest) getMergedWindows() *tdigest.TDigest {
 	windows := w.cloneWindows()
 	merged, _ := tdigest.New(tdigest.RandomNumberGenerator(fastrand.Rand{}))

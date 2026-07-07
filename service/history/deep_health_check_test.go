@@ -341,6 +341,9 @@ func TestDeepHealthCheck(t *testing.T) {
 			testLogger := testlogger.NewTestLogger(t, testlogger.FailOnAnyUnexpectedError)
 			startupTime := time.Unix(0, 0)
 
+			historyHealthSignal, err := interceptor.NewHealthSignalAggregator(testLogger, func() bool { return true }, time.Second, 10, 100)
+			require.NoError(t, err)
+
 			handler := deepHealthCheckHandler{
 				healthServer:   health.NewServer(),
 				metricsHandler: metrics.NoopMetricsHandler,
@@ -351,7 +354,7 @@ func TestDeepHealthCheck(t *testing.T) {
 					HealthRPCErrorRatio:             func() float64 { return 0.1 },
 					HealthHistoryInitializationTime: func() time.Duration { return time.Minute },
 				},
-				historyHealthSignal:     interceptor.NewHealthSignalAggregator(testLogger, func() bool { return true }, time.Second, 100),
+				historyHealthSignal:     historyHealthSignal,
 				persistenceHealthSignal: persistence.NewHealthSignalAggregator(true, time.Second, 100, metrics.NoopMetricsHandler, testLogger),
 				startupTime:             startupTime,
 			}
